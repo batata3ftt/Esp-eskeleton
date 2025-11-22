@@ -1,0 +1,134 @@
+-- ESP Skeleton Separado
+local function ESP_Skeleton(on)
+    -- Verificar se Drawing API está disponível
+    local hasDrawing = pcall(function() 
+        local t = Drawing.new("Line"); 
+        t:Remove() 
+    end)
+    
+    if not hasDrawing then
+        print("ESP Skeleton não disponível - seu executor não suporta Drawing API")
+        return
+    end
+    
+    if not on then
+        -- Desativar ESP Skeleton
+        if _G.BedolSkeletonESP then
+            game:GetService("RunService"):UnbindFromRenderStep("BedolSkeletonESP")
+            for _,data in pairs(_G.BedolSkeletonESP) do
+                for _,line in pairs(data.Lines) do 
+                    if line.Remove then line:Remove() end 
+                end
+            end
+            _G.BedolSkeletonESP = {}
+        end
+        return
+    end
+    
+    -- Inicializar variáveis
+    local Players = game:GetService("Players")
+    local Camera = workspace.CurrentCamera
+    local RunService = game:GetService("RunService")
+    local LocalPlayer = Players.LocalPlayer
+    
+    if not _G.BedolSkeletonESP then 
+        _G.BedolSkeletonESP = {} 
+    end
+    
+    local ESP = _G.BedolSkeletonESP
+    
+    -- Função para criar linha
+    local function createLine() 
+        local line = Drawing.new("Line")
+        line.Thickness = 1.5
+        line.Color = Color3.new(1,1,1)
+        line.Visible = true
+        return line 
+    end
+    
+    -- Configurar ESP para jogador
+    local function setupESP(player)
+        if player == LocalPlayer then return end
+        
+        local function onCharacterAdded(char)
+            local humanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid",5)
+            if not humanoid then return end
+            
+            local rigType = humanoid.RigType
+            local bonePairs = {}
+            
+            -- Definir pares de ossos baseado no tipo de rig
+            if rigType == Enum.HumanoidRigType.R15 then
+                bonePairs = {
+                    {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+                    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+                    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+                    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+                    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightUpperLeg","RightFoot"},
+                }
+            else
+                bonePairs = {
+                    {"Head","Torso"},{"Torso","Left Arm"},{"Left Arm","Left Leg"},
+                    {"Torso","Right Arm"},{"Right Arm","Right Leg"}
+                }
+            end
+            
+            local skeletonLines = {}
+            for _,pair in ipairs(bonePairs) do
+                skeletonLines[table.concat(pair, "_")] = createLine()
+            end
+            
+            ESP[player] = {
+                Lines = skeletonLines,
+                Bones = bonePairs,
+                Character = char
+            }
+        end
+        
+        if player.Character then 
+            onCharacterAdded(player.Character) 
+        end
+        player.CharacterAdded:Connect(onCharacterAdded)
+    end
+    
+    -- Função para desenhar linha
+    local function drawLine(from, to, line)
+        if from and to then
+            local p1, on1 = Camera:WorldToViewportPoint(from.Position)
+            local p2, on2 = Camera:WorldToViewportPoint(to.Position)
+            
+            if on1 and on2 then
+                line.From = Vector2.new(p1.X, p1.Y)
+                line.To = Vector2.new(p2.X, p2.Y)
+                line.Visible = true
+                return
+            end
+        end
+        line.Visible = false
+    end
+    
+    -- Aplicar para jogadores existentes
+    for _,player in ipairs(Players:GetPlayers()) do 
+        setupESP(player) 
+    end
+    
+    -- Conectar eventos
+    Players.PlayerAdded:Connect(setupESP)
+    
+    -- Loop de atualização
+    RunService:BindToRenderStep("BedolSkeletonESP", Enum.RenderPriority.Camera.Value, function()
+        for player,data in pairs(ESP) do
+            local char = data.Character
+            if char then
+                for _,pair in ipairs(data.Bones) do
+                    local part1 = char:FindFirstChild(pair[1])
+                    local part2 = char:FindFirstChild(pair[2])
+                    local line = data.Lines[table.concat(pair, "_")]
+                    drawLine(part1, part2, line)
+                end
+            end
+        end
+    end)
+end
+
+return ESP_Skeleton
